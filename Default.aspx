@@ -3,7 +3,8 @@
 <asp:Content ID="BodyContent" ContentPlaceHolderID="MainContent" runat="server">
     <style>
         iframe {
-            min-height: 1000px;
+            aspect-ratio: 16 / 9;
+            min-height: 100%;
         }
     </style>
     <div class="row">
@@ -17,7 +18,7 @@
                     </div>
                     <div class="d-flex gap-2">
                         <asp:Button ID="btnUpload" runat="server" Text="Subir y abrir" CssClass="btn btn-primary" OnClick="btnUpload_Click" />
-                        <asp:Button ID="btnDownload" runat="server" Text="Descargar" CssClass="btn btn-secondary" OnClick="btnDownload_Click" Enabled="false" />
+                        <asp:Button ID="btnDownload" runat="server" Text="Descargar" CssClass="btn btn-secondary" OnClick="btnDownload_Click" Enabled="false" OnClientClick="return window.WebEditor_downloadWithSave();" />
                     </div>
                     <asp:Literal ID="litStatus" runat="server" />
                 </div>
@@ -44,6 +45,25 @@
                 }
                 window._docEditor = new DocsAPI.DocEditor("onlyoffice-editor", cfg);
             })();
+
+            window.WebEditor_downloadWithSave = function () {
+                // Si el editor no está listo aún, deja que el postback ocurra.
+                if (!window._docEditor) return true;
+
+                // Solicita guardado explícito al Document Server y espera un momento,
+                // para dar tiempo a que llegue el callback y se sobrescriba el archivo en disco.
+                try {
+                    if (window._docEditor.requestSave) {
+                        window._docEditor.requestSave();
+                        setTimeout(function () {
+                            __doPostBack('<%= btnDownload.UniqueID %>', '');
+                        }, 1500);
+                        return false;
+                    }
+                } catch (e) { }
+
+                return true;
+            };
         </script>
     </asp:PlaceHolder>
 </asp:Content>
