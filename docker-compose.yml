@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  onlyoffice:
+    image: onlyoffice/documentserver
+    container_name: onlyofficeVS
+    restart: always
+    privileged: true
+    ports:
+      - "8085:80"
+    environment:
+      # Define aquí tu secreto personalizado
+      - JWT_ENABLED=true
+      - JWT_SECRET=secreto_personalizado
+      - JWT_HEADER=Authorization
+    # Si necesitas persistencia de datos, descomenta las siguientes líneas:
+    # volumes:
+    #   - ./onlyoffice/logs:/var/log/onlyoffice
+    #   - ./onlyoffice/data:/var/www/onlyoffice/Data
+    #   - ./onlyoffice/lib:/var/lib/onlyoffice
+    #   - ./onlyoffice/db:/var/lib/postgresql

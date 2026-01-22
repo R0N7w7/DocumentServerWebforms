@@ -6,6 +6,10 @@
             aspect-ratio: 16 / 9;
             min-height: 100%;
         }
+
+        .row{
+            display: block;
+        }
     </style>
     <div class="row">
         <div class="col-12">
@@ -18,7 +22,7 @@
                     </div>
                     <div class="d-flex gap-2">
                         <asp:Button ID="btnUpload" runat="server" Text="Subir y abrir" CssClass="btn btn-primary" OnClick="btnUpload_Click" />
-                        <asp:Button ID="btnDownload" runat="server" Text="Descargar" CssClass="btn btn-secondary" OnClick="btnDownload_Click" Enabled="false" OnClientClick="return window.WebEditor_downloadWithSave();" />
+                        <asp:Button ID="btnDownload" runat="server" Text="Descargar" CssClass="btn btn-secondary" OnClick="btnDownload_Click" Enabled="false" OnClientClick="return window.WebEditor_trySaveThenDownload();" />
                     </div>
                     <asp:Literal ID="litStatus" runat="server" />
                 </div>
@@ -27,12 +31,12 @@
             <asp:HiddenField ID="hfDocKey" runat="server" />
             <asp:HiddenField ID="hfFileId" runat="server" />
 
-            <div id="onlyoffice-editor" style="width: 100%; height: 900px; border: 1px solid #ddd;"></div>
+            <div id="onlyoffice-editor" style="width: 100%; height: 100%; border: 1px solid #ddd;"></div>
         </div>
     </div>
 
     <asp:PlaceHolder runat="server">
-        <script type="text/javascript" src="http://192.168.137.213:8085/web-apps/apps/api/documents/api.js"></script>
+        <script type="text/javascript" src="http://192.168.10.34:8085/web-apps/apps/api/documents/api.js"></script>
         <script type="text/javascript">
             (function () {
                 var cfg = <%= OnlyOfficeConfigJson %>;
@@ -46,24 +50,52 @@
                 window._docEditor = new DocsAPI.DocEditor("onlyoffice-editor", cfg);
             })();
 
-            window.WebEditor_downloadWithSave = function () {
-                // Si el editor no está listo aún, deja que el postback ocurra.
-                if (!window._docEditor) return true;
+            window.WebEditor_trySaveThenDownload = function () {
+                var fileId = '<%= (hfFileId.Value ?? string.Empty).Replace("'", "") %>';
+                var key = '<%= (hfDocKey.Value ?? string.Empty).Replace("'", "") %>';
 
-                // Solicita guardado explícito al Document Server y espera un momento,
-                // para dar tiempo a que llegue el callback y se sobrescriba el archivo en disco.
                 try {
-                    if (window._docEditor.requestSave) {
+                    if (window._docEditor && window._docEditor.requestSave) {
                         window._docEditor.requestSave();
-                        setTimeout(function () {
-                            __doPostBack('<%= btnDownload.UniqueID %>', '');
-                        }, 1500);
-                        return false;
                     }
                 } catch (e) { }
 
-                return true;
+                var started = Date.now();
+                var timeoutMs = 15000;
+                var intervalMs = 500;
+
+                function poll() {
+                    var elapsed = Date.now() - started;
+                    if (elapsed > timeoutMs) {
+                        __doPostBack('<%= btnDownload.UniqueID %>', '');
+                        return;
+                    }
+
+                    var url = 'Default?onlyoffice=savestatus&fileId=' + encodeURIComponent(fileId);
+                    if (key) url += '&key=' + encodeURIComponent(key);
+
+                    try {
+                        fetch(url, { cache: 'no-store' })
+                            .then(function (r) { return r.json(); })
+                            .then(function (j) {
+                                if (j && j.saved === true) {
+                                    __doPostBack('<%= btnDownload.UniqueID %>', '');
+                                    return;
+                                }
+                                setTimeout(poll, intervalMs);
+                            })
+                            .catch(function () {
+                                setTimeout(poll, intervalMs);
+                            });
+                    } catch (e) {
+                        setTimeout(poll, intervalMs);
+                    }
+                }
+
+                poll();
+                return false;
             };
+
         </script>
     </asp:PlaceHolder>
 </asp:Content>
