@@ -1,0 +1,300 @@
+:root {
+    --we-accent: #7c9383;
+    --we-bg: #ffffff;
+    --we-text: #111827;
+    --we-muted: #6b7280;
+    --we-border: #e5e7eb;
+    --we-surface: #ffffff;
+    --we-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 1px rgba(16, 24, 40, 0.04);
+    --we-ring: 0 0 0 4px rgba(124, 147, 131, 0.18);
+}
+
+.we {
+    color: var(--we-text);
+}
+
+.we-h1 {
+    margin: 0;
+    font-weight: 700;
+    font-size: 1.35rem;
+    letter-spacing: -0.02em;
+}
+
+.we-muted {
+    color: var(--we-muted);
+    font-size: .95rem;
+    margin-top: .25rem;
+}
+
+.we-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    margin: .75rem 0 1rem 0;
+}
+
+.we-toolbar {
+    background: var(--we-surface);
+    border: 1px solid var(--we-border);
+    border-radius: 14px;
+    padding: 12px;
+    box-shadow: var(--we-shadow);
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.we-toolbar__left {
+    min-width: 0;
+}
+
+.we-toolbar__right {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.we-toolbar__status {
+    grid-column: 1 / -1;
+    padding-top: 2px;
+}
+
+.we-input {
+    max-width: none;
+    border-radius: 12px;
+    border-color: var(--we-border);
+    height: 42px;
+    padding-top: .45rem;
+    padding-bottom: .45rem;
+    font-size: .95rem;
+}
+
+.we-input:focus {
+    border-color: var(--we-accent);
+    box-shadow: var(--we-ring);
+}
+
+.we-btn {
+    border-radius: 12px;
+    padding: .55rem .95rem;
+    font-weight: 600;
+    border: 1px solid transparent;
+    height: 42px;
+    display: inline-flex;
+    align-items: center;
+}
+
+.we-btn-accent {
+    background: var(--we-accent);
+    border-color: var(--we-accent);
+    color: #fff;
+}
+
+.we-btn-accent:hover {
+    filter: brightness(0.97);
+    color: #fff;
+}
+
+.we-btn-ghost {
+    background: #fff;
+    border-color: var(--we-border);
+    color: var(--we-text);
+}
+
+.we-btn-ghost:hover {
+    border-color: rgba(124, 147, 131, 0.55);
+}
+
+.we-btn:focus,
+.we-btn:active,
+.we-btn:focus-visible {
+    outline: none;
+    box-shadow: var(--we-ring);
+}
+
+.we-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 14px;
+    align-items: start;
+}
+
+.we-surface {
+    background: var(--we-surface);
+    border: 1px solid var(--we-border);
+    border-radius: 16px;
+    box-shadow: var(--we-shadow);
+    overflow: hidden;
+}
+
+.we-surface__head {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--we-border);
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.we-surface__title {
+    font-weight: 700;
+}
+
+.we-surface__meta {
+    color: var(--we-muted);
+    font-size: .85rem;
+    white-space: nowrap;
+}
+
+.we-editor {
+    width: 100%;
+    height: 100%;
+    min-height: 520px;
+}
+
+/* OnlyOffice renders inside an iframe.
+   Cross-origin iframes can't be styled internally from here, but we can style the iframe element itself. */
+ iframe {
+    width: 100% !important;
+    height: auto;
+    aspect-ratio: 16/9 !important;
+    min-height: 100%;
+    background: #fff;
+    box-shadow: var(--we-shadow);
+}
+
+.we-surface--sticky {
+    position: sticky;
+    top: 14px;
+}
+
+.we-changes {
+    padding: 10px 6px;
+    display: grid;
+    gap: 4px;
+    min-height: 100%;
+    height: 100%;
+}
+
+.we-change {
+    border: 1px solid var(--we-border);
+    border-radius: 14px;
+    padding: 10px 10px;
+    background: #fff;
+    transition: all 150ms ease-in-out;
+    cursor: pointer;
+}
+
+.we-change:hover {
+    border-color: var(--we-accent);
+    box-shadow: var(--we-ring);
+}
+
+.we-change__top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.we-change__title {
+    font-weight: 650;
+}
+
+.we-change__desc {
+    margin-top: 6px;
+    color: var(--we-text);
+    font-size: .92rem;
+}
+
+.we-change__meta {
+    margin-top: 6px;
+    color: var(--we-muted);
+    font-size: .82rem;
+}
+
+.we-divider {
+    height: 1px;
+    background: var(--we-border);
+    margin: 10px 0;
+}
+
+.we-busyOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(2px);
+    z-index: 2147483000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+}
+
+.we-busyOverlay__card {
+    background: #fff;
+    border: 1px solid var(--we-border);
+    border-radius: 16px;
+    box-shadow: var(--we-shadow);
+    padding: 14px 16px;
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--we-text);
+}
+
+.we-busyOverlay__text {
+    font-size: .95rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+.we-spinner {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid rgba(124, 147, 131, 0.25);
+    border-top-color: var(--we-accent);
+    animation: weSpin .8s linear infinite;
+}
+
+.we-spinner--lg {
+    width: 22px;
+    height: 22px;
+    border-width: 3px;
+}
+
+@keyframes weSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.we-asideActions {
+    padding: 10px 12px 12px;
+    display: grid;
+    gap: 8px;
+}
+
+.we-btn-block {
+    width: 100%;
+    justify-content: center;
+}
+
+.we-asideHint {
+    color: var(--we-muted);
+    font-size: .85rem;
+}
+
+@media (max-width: 991.98px) {
+    .we-layout {
+        grid-template-columns: 1fr;
+    }
+    .we-surface--sticky {
+        position: static;
+    }
+    .we-editor {
+        height: 70vh;
+        min-height: 520px;
+    }
+}

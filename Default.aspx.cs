@@ -1,11 +1,9 @@
 ﻿using System;
 using System.IO;
-using System.Security.Cryptography;
 using System.Text;
 using System.Web;
 using System.Web.Script.Serialization;
 using System.Web.UI;
-using System.Collections.Concurrent;
 using System.Net;
 
 namespace WebEditor
@@ -13,6 +11,8 @@ namespace WebEditor
     public partial class _Default : Page
     {
         private const string UploadFolderVirtual = "~/App_Data/uploads";
+        // Producción: no escribir logs de callbacks en disco por defecto.
+        private const bool EnableOnlyOfficeCallbackLogging = false;
 
         // Centraliza aquí la configuración de red/OnlyOffice.
         // - PublicBaseUrl: URL pública de esta app (la que el Document Server puede alcanzar)
@@ -22,9 +22,6 @@ namespace WebEditor
         {
             // Ejemplo: "http://192.168.10.34:2355" (sin slash final)
             public static string PublicBaseUrlOverride { get; set; } = "http://192.168.10.34:2355";
-
-            // Ejemplo: "http://192.168.10.50:8080" (si necesitas referenciar el DS desde tu app)
-            public static string DocumentServerUrl { get; set; } = "http://192.168.10.34:8085";
 
             // Debe coincidir con el valor configurado en OnlyOffice Document Server
             public static string JwtSecret { get; set; } = "secreto_personalizado";
@@ -36,7 +33,7 @@ namespace WebEditor
 
                 // Fallback: usa la URL de la petición actual.
                 // OJO: esto sólo funciona si Document Server puede resolver/alcanzar esa misma URL.
-                if (request?.Url == null)
+                if (request?.Url == null) 
                     return null;
 
                 var baseUri = request.Url;
@@ -47,12 +44,6 @@ namespace WebEditor
                 var builder = new UriBuilder(baseUri.Scheme, baseUri.Host, baseUri.Port, path);
                 return builder.Uri.ToString().TrimEnd('/');
             }
-        }
-
-        private sealed class SavedUrlInfo
-        {
-            public string Url { get; set; }
-            public DateTime UtcSavedAt { get; set; }
         }
 
         private static bool TryReadOnlyOfficeKeyFromJwt(string token, out string key)
@@ -87,13 +78,51 @@ namespace WebEditor
             }
         }
 
-        private static readonly ConcurrentDictionary<string, SavedUrlInfo> LastSavedUrlByDocKey =
-            new ConcurrentDictionary<string, SavedUrlInfo>(StringComparer.OrdinalIgnoreCase);
+        private static readonly CallbackUrlStore CallbackUrls = new CallbackUrlStore();
+
+        private sealed class CallbackUrlStore
+        {
+            internal sealed class SavedUrlInfo
+            {
+                public string Url { get; set; }
+                public DateTime UtcSavedAt { get; set; }
+            }
+
+            private readonly System.Collections.Concurrent.ConcurrentDictionary<string, SavedUrlInfo> _savedByKey =
+                new System.Collections.Concurrent.ConcurrentDictionary<string, SavedUrlInfo>(StringComparer.OrdinalIgnoreCase);
+
+            public bool TryGet(string lookupKey, out SavedUrlInfo saved) => _savedByKey.TryGetValue(lookupKey ?? string.Empty, out saved);
+
+            public void Upsert(string key, string url)
+            {
+                if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(url)) return;
+                _savedByKey[key] = new SavedUrlInfo { Url = url, UtcSavedAt = DateTime.UtcNow };
+            }
+
+            public bool TryFindByContainedFileId(string fileId, out SavedUrlInfo match)
+            {
+                match = null;
+                if (string.IsNullOrWhiteSpace(fileId)) return false;
+                foreach (var kvp in _savedByKey)
+                {
+                    var u = kvp.Value?.Url;
+                    if (!string.IsNullOrWhiteSpace(u) && u.IndexOf(fileId, StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        match = kvp.Value;
+                        return true;
+                    }
+                }
+                return false;
+            }
+        }
 
         protected string OnlyOfficeConfigJson { get; private set; }
 
         protected void Page_Load(object sender, EventArgs e)
         {
+            // Expose the UniqueID for safe client-side postback without relying on inline server blocks.
+            hfDownloadUniqueId.Value = btnDownload?.UniqueID ?? string.Empty;
+
             if (IsCallbackRequest())
             {
                 ProcessOnlyOfficeCallback();
@@ -113,7 +142,7 @@ namespace WebEditor
         {
             if (!fuFile.HasFile)
             {
-                litStatus.Text = "<div class='text-danger mt-2'>Selecciona un archivo.</div>";
+                litStatus.Text = string.Empty;
                 return;
             }
 
@@ -131,7 +160,7 @@ namespace WebEditor
             btnDownload.Enabled = true;
 
             OnlyOfficeConfigJson = BuildOnlyOfficeConfigJson(originalName, storedName);
-            litStatus.Text = "<div class='text-success mt-2'>Archivo subido. Cargando editor…</div>";
+            litStatus.Text = string.Empty;
         }
 
         private static string GenerateOnlyOfficeDocumentKey(string fileId)
@@ -250,11 +279,7 @@ namespace WebEditor
             {
                 // Guardar por docKey si existe; fallback por fileId.
                 var storeKey = !string.IsNullOrWhiteSpace(docKey) ? docKey : fileId;
-                LastSavedUrlByDocKey[storeKey] = new SavedUrlInfo
-                {
-                    Url = downloadUrl,
-                    UtcSavedAt = DateTime.UtcNow
-                };
+                CallbackUrls.Upsert(storeKey, downloadUrl);
             }
 
             RespondJson("{\"error\":0}");
@@ -262,6 +287,9 @@ namespace WebEditor
 
         private static void TryLogOnlyOfficeCallback(string body, int status, string url, string fileId)
         {
+            if (!EnableOnlyOfficeCallbackLogging)
+                return;
+
             try
             {
                 var ctx = HttpContext.Current;
@@ -390,7 +418,7 @@ namespace WebEditor
 
             var serializer = new JavaScriptSerializer();
             var configJson = serializer.Serialize(configObject);
-            var token = CreateJwt(configJson);
+            var token = OnlyOfficeJwtHelper.Create(configJson, OnlyOfficeSettings.JwtSecret);
 
             // Return final config with token field at top-level (OnlyOffice expects it there when JWT is enabled)
             var finalJson = "{\"token\":" + serializer.Serialize(token) + ",\"document\":" + serializer.Serialize(configObject.document) + ",\"documentType\":" + serializer.Serialize(configObject.documentType) + ",\"editorConfig\":" + serializer.Serialize(configObject.editorConfig) + "}";
@@ -428,20 +456,12 @@ namespace WebEditor
                     return;
                 }
 
-                if (!LastSavedUrlByDocKey.TryGetValue(lookupKey, out var saved) || string.IsNullOrWhiteSpace(saved?.Url))
+                if (!CallbackUrls.TryGet(lookupKey, out var saved) || string.IsNullOrWhiteSpace(saved?.Url))
                 {
                     // Fallback: intentar encontrar una URL guardada que contenga el `fileId` (o parte) en la ruta.
                     if (!string.IsNullOrWhiteSpace(fileId))
                     {
-                        foreach (var kvp in LastSavedUrlByDocKey)
-                        {
-                            var u = kvp.Value?.Url;
-                            if (!string.IsNullOrWhiteSpace(u) && u.IndexOf(fileId, StringComparison.OrdinalIgnoreCase) >= 0)
-                            {
-                                saved = kvp.Value;
-                                break;
-                            }
-                        }
+                        CallbackUrls.TryFindByContainedFileId(fileId, out saved);
                     }
 
                     if (saved == null || string.IsNullOrWhiteSpace(saved.Url))
@@ -465,23 +485,13 @@ namespace WebEditor
                 var fileId = Request.QueryString["fileId"];
                 var lookupKey = !string.IsNullOrWhiteSpace(docKey) ? docKey : fileId;
 
-                SavedUrlInfo saved = null;
+                CallbackUrlStore.SavedUrlInfo saved = null;
                 if (!string.IsNullOrWhiteSpace(lookupKey))
                 {
-                    LastSavedUrlByDocKey.TryGetValue(lookupKey, out saved);
+                    CallbackUrls.TryGet(lookupKey, out saved);
 
                     if ((saved == null || string.IsNullOrWhiteSpace(saved.Url)) && !string.IsNullOrWhiteSpace(fileId))
-                    {
-                        foreach (var kvp in LastSavedUrlByDocKey)
-                        {
-                            var u = kvp.Value?.Url;
-                            if (!string.IsNullOrWhiteSpace(u) && u.IndexOf(fileId, StringComparison.OrdinalIgnoreCase) >= 0)
-                            {
-                                saved = kvp.Value;
-                                break;
-                            }
-                        }
-                    }
+                        CallbackUrls.TryFindByContainedFileId(fileId, out saved);
                 }
 
                 var has = saved != null && !string.IsNullOrWhiteSpace(saved.Url);
@@ -544,50 +554,61 @@ namespace WebEditor
         }
 
 
-        private static string Base64UrlEncode(byte[] input)
-        {
-            return Convert.ToBase64String(input)
-                .TrimEnd('=')
-                .Replace('+', '-')
-                .Replace('/', '_');
-        }
+        private bool ValidateJwt(string token) => OnlyOfficeJwtHelper.Validate(token, OnlyOfficeSettings.JwtSecret);
 
-        private static byte[] HmacSha256(byte[] key, byte[] data)
+        private static class OnlyOfficeJwtHelper
         {
-            using (var h = new HMACSHA256(key))
+            public static string Create(string jsonPayload, string secret)
             {
-                return h.ComputeHash(data);
+                if (string.IsNullOrWhiteSpace(jsonPayload)) return null;
+                if (secret == null) secret = string.Empty;
+
+                var headerJson = "{\"alg\":\"HS256\",\"typ\":\"JWT\"}";
+                var header = Base64UrlEncode(Encoding.UTF8.GetBytes(headerJson));
+                var payload = Base64UrlEncode(Encoding.UTF8.GetBytes(jsonPayload));
+                var signingInput = header + "." + payload;
+                var signatureBytes = HmacSha256(Encoding.UTF8.GetBytes(secret), Encoding.UTF8.GetBytes(signingInput));
+                var signature = Base64UrlEncode(signatureBytes);
+                return signingInput + "." + signature;
             }
-        }
 
-        private static bool FixedTimeEquals(byte[] a, byte[] b)
-        {
-            if (a == null || b == null || a.Length != b.Length) return false;
-            var diff = 0;
-            for (int i = 0; i < a.Length; i++) diff |= a[i] ^ b[i];
-            return diff == 0;
-        }
+            public static bool Validate(string token, string secret)
+            {
+                if (string.IsNullOrWhiteSpace(token)) return false;
+                if (secret == null) secret = string.Empty;
 
-        private string CreateJwt(string payloadJson)
-        {
-            var headerJson = "{\"alg\":\"HS256\",\"typ\":\"JWT\"}";
-            var header = Base64UrlEncode(Encoding.UTF8.GetBytes(headerJson));
-            var payload = Base64UrlEncode(Encoding.UTF8.GetBytes(payloadJson));
-            var signingInput = header + "." + payload;
-            var signatureBytes = HmacSha256(Encoding.UTF8.GetBytes(OnlyOfficeSettings.JwtSecret), Encoding.UTF8.GetBytes(signingInput));
-            var signature = Base64UrlEncode(signatureBytes);
-            return signingInput + "." + signature;
-        }
+                var parts = token.Split('.');
+                if (parts.Length != 3) return false;
 
-        private bool ValidateJwt(string token)
-        {
-            var parts = token.Split('.');
-            if (parts.Length != 3) return false;
+                var signingInput = parts[0] + "." + parts[1];
+                var expectedSig = Base64UrlEncode(HmacSha256(Encoding.UTF8.GetBytes(secret), Encoding.UTF8.GetBytes(signingInput)));
+                var actualSig = parts[2];
+                return FixedTimeEquals(Encoding.ASCII.GetBytes(expectedSig), Encoding.ASCII.GetBytes(actualSig));
+            }
 
-            var signingInput = parts[0] + "." + parts[1];
-            var expectedSig = Base64UrlEncode(HmacSha256(Encoding.UTF8.GetBytes(OnlyOfficeSettings.JwtSecret), Encoding.UTF8.GetBytes(signingInput)));
-            var actualSig = parts[2];
-            return FixedTimeEquals(Encoding.ASCII.GetBytes(expectedSig), Encoding.ASCII.GetBytes(actualSig));
+            private static string Base64UrlEncode(byte[] input)
+            {
+                return Convert.ToBase64String(input)
+                    .TrimEnd('=')
+                    .Replace('+', '-')
+                    .Replace('/', '_');
+            }
+
+            private static byte[] HmacSha256(byte[] key, byte[] data)
+            {
+                using (var h = new System.Security.Cryptography.HMACSHA256(key))
+                {
+                    return h.ComputeHash(data);
+                }
+            }
+
+            private static bool FixedTimeEquals(byte[] a, byte[] b)
+            {
+                if (a == null || b == null || a.Length != b.Length) return false;
+                var diff = 0;
+                for (int i = 0; i < a.Length; i++) diff |= a[i] ^ b[i];
+                return diff == 0;
+            }
         }
 
         private string FindStoredName(string fileId)
@@ -607,48 +628,6 @@ namespace WebEditor
         {
             var uploadsPhysical = Server.MapPath(UploadFolderVirtual);
             return Path.Combine(uploadsPhysical, storedName);
-        }
-
-        private static string GuessDocumentType(string fileType)
-        {
-            if (string.IsNullOrWhiteSpace(fileType)) return "text";
-            fileType = fileType.ToLowerInvariant();
-
-            switch (fileType)
-            {
-                case "doc":
-                case "docx":
-                case "odt":
-                case "rtf":
-                case "txt":
-                case "pdf":
-                    return "text";
-                case "xls":
-                case "xlsx":
-                case "ods":
-                case "csv":
-                    return "spreadsheet";
-                case "ppt":
-                case "pptx":
-                case "odp":
-                    return "presentation";
-                default:
-                    return "text";
-            }
-        }
-
-        private static string ComputeKey(string fileId, string physicalPath)
-        {
-            var lastWrite = File.GetLastWriteTimeUtc(physicalPath).Ticks.ToString();
-            var raw = fileId + ":" + lastWrite;
-            using (var sha = SHA256.Create())
-            {
-                var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(raw));
-                var sb = new StringBuilder(bytes.Length * 2);
-                for (int i = 0; i < bytes.Length; i++) sb.Append(bytes[i].ToString("x2"));
-                // OnlyOffice key size limitations; keep it short but stable.
-                return sb.ToString(0, 20);
-            }
         }
 
         private string AbsoluteUrl(string relative)
