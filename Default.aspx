@@ -110,6 +110,7 @@
                         el.style.display = isBusy ? 'flex' : 'none';
                     } catch (e) { }
                 }
+                window.WebEditor_setBusy = setBusy;
 
                 setBusy(true);
 
@@ -121,6 +122,25 @@
                 cfg.editorConfig.customization.hideRightMenu = true;
                 cfg.editorConfig.customization.hideRulers = true;
                 cfg.editorConfig.customization.showReviewChanges = true;
+
+                // Hook OnlyOffice events so downloadAs can return a URL immediately.
+                cfg.events = cfg.events || {};
+                cfg.events.onAppReady = function () { setBusy(false); };
+                cfg.events.onDownloadAs = function (evt) {
+                    setBusy(false);
+                    try {
+                        var data = evt && evt.data;
+                        if (data && data.url) {
+                            window.location.href = data.url;
+                            return;
+                        }
+                    } catch (e) { }
+
+                    // Fallback to legacy flow if the URL is not present.
+                    if (typeof window.WebEditor_startLegacySaveThenDownload === 'function') {
+                        window.WebEditor_startLegacySaveThenDownload();
+                    }
+                };
 
                 if (window._docEditor && window._docEditor.destroyEditor) {
                     try { window._docEditor.destroyEditor(); } catch (e) { }
@@ -175,7 +195,7 @@
                 })();
             })();
 
-            window.WebEditor_trySaveThenDownload = function () {
+            window.WebEditor_startLegacySaveThenDownload = function () {
                 var fileId = '<%= (hfFileId.Value ?? string.Empty).Replace("'", "") %>';
                 var key = '<%= (hfDocKey.Value ?? string.Empty).Replace("'", "") %>';
                 var downloadUniqueId = '<%= (hfDownloadUniqueId.Value ?? string.Empty).Replace("'", "") %>';
@@ -241,6 +261,19 @@
 
                 poll();
                 return false;
+            };
+
+            window.WebEditor_trySaveThenDownload = function () {
+                var editor = window._docEditor;
+                if (editor && typeof editor.downloadAs === 'function') {
+                    try { if (typeof window.WebEditor_setBusy === 'function') window.WebEditor_setBusy(true); } catch (e) { }
+                    try {
+                        editor.downloadAs();
+                        return false;
+                    } catch (e) { }
+                }
+
+                return window.WebEditor_startLegacySaveThenDownload();
             };
 
         </script>

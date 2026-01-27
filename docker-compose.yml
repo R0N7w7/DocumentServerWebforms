@@ -2,18 +2,19 @@ version: '3.8'
 
 services:
   onlyoffice:
-    image: onlyoffice/documentserver
+    # Cambiamos a la versión sin límites
+    image: ghcr.io/thomisus/onlyoffice-documentserver-unlimited:latest
     container_name: onlyofficeVS
     restart: always
     privileged: true
     ports:
       - "8085:80"
     environment:
-      # Define aquí tu secreto personalizado
       - JWT_ENABLED=true
       - JWT_SECRET=secreto_personalizado
       - JWT_HEADER=Authorization
-    # Si necesitas persistencia de datos, descomenta las siguientes líneas:
+    # NOTA: Si ya tenías datos en el contenedor anterior, 
+    # se borrarán al cambiar la imagen a menos que uses volúmenes.
     # volumes:
     #   - ./onlyoffice/logs:/var/log/onlyoffice
     #   - ./onlyoffice/data:/var/www/onlyoffice/Data
