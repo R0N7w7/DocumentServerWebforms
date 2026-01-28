@@ -4,13 +4,6 @@
     <link rel="stylesheet" href="<%= ResolveUrl("~/Content/WebEditor.css") %>" />
 
     <div class="we">
-        <header class="we-header">
-            <div class="we-header__title">
-                <h1 class="we-h1">Editor de documentos</h1>
-                <div class="we-muted">Carga un archivo, edítalo en OnlyOffice y descárgalo cuando esté listo.</div>
-            </div>
-        </header>
-
         <div id="weBusyOverlay" class="we-busyOverlay" style="display:none" aria-live="polite" aria-busy="true">
             <div class="we-busyOverlay__card" role="status" aria-label="Procesando">
                 <span class="we-spinner we-spinner--lg" aria-hidden="true"></span>
