@@ -1,4 +1,4 @@
-﻿<%@ Page Title="Home Page" Language="C#" MasterPageFile="~/Site.Master" AutoEventWireup="true" CodeBehind="Default.aspx.cs" Inherits="WebEditor._Default" ValidateRequest="false" %>
+﻿ <%@ Page Title="Home Page" Language="C#" MasterPageFile="~/Site.Master" AutoEventWireup="true" CodeBehind="Default.aspx.cs" Inherits="WebEditor._Default" ValidateRequest="false" %>
 
 <asp:Content ID="BodyContent" ContentPlaceHolderID="MainContent" runat="server">
     <link rel="stylesheet" href="<%= ResolveUrl("~/Content/WebEditor.css") %>" />
@@ -17,7 +17,6 @@
             </div>
             <div class="we-toolbar__right">
                 <asp:Button ID="btnUpload" runat="server" Text="Subir y abrir" CssClass="btn we-btn we-btn-accent" OnClick="btnUpload_Click" />
-                <asp:Button ID="btnDownload" runat="server" Text="Guardar y descargar" CssClass="btn we-btn we-btn-ghost" OnClick="btnDownload_Click" Enabled="false" Style="display:none" />
             </div>
             <div class="we-toolbar__status">
                 <asp:Literal ID="litStatus" runat="server" />
@@ -26,7 +25,6 @@
 
         <asp:HiddenField ID="hfDocKey" runat="server" />
         <asp:HiddenField ID="hfFileId" runat="server" />
-        <asp:HiddenField ID="hfDownloadUniqueId" runat="server" Value="" />
 
         <div class="we-layout">
             <main class="we-main" aria-label="Editor">
@@ -88,7 +86,7 @@
     </div>
 
     <asp:PlaceHolder runat="server">
-        <script type="text/javascript" src="http://192.168.10.34:8085/web-apps/apps/api/documents/api.js"></script>
+        <script type="text/javascript" src="https://192.168.10.34:4443/web-apps/apps/api/documents/api.js"></script>
         <script type="text/javascript">
             (function () {
                 var cfg = <%= OnlyOfficeConfigJson %>;
@@ -125,14 +123,8 @@
                         var data = evt && evt.data;
                         if (data && data.url) {
                             window.location.href = data.url;
-                            return;
                         }
                     } catch (e) { }
-
-                    // Fallback to legacy flow if the URL is not present.
-                    if (typeof window.WebEditor_startLegacySaveThenDownload === 'function') {
-                        window.WebEditor_startLegacySaveThenDownload();
-                    }
                 };
 
                 if (window._docEditor && window._docEditor.destroyEditor) {
@@ -188,85 +180,17 @@
                 })();
             })();
 
-            window.WebEditor_startLegacySaveThenDownload = function () {
-                var fileId = '<%= (hfFileId.Value ?? string.Empty).Replace("'", "") %>';
-                var key = '<%= (hfDocKey.Value ?? string.Empty).Replace("'", "") %>';
-                var downloadUniqueId = '<%= (hfDownloadUniqueId.Value ?? string.Empty).Replace("'", "") %>';
-
-                function doDownloadPostBack() {
-                    try {
-                        if (typeof __doPostBack === 'function' && downloadUniqueId) {
-                            __doPostBack(downloadUniqueId, '');
-                            return;
-                        }
-                    } catch (e) { }
-
-                    // fallback: navigate to server handler directly
-                    try {
-                        var url = 'Default.aspx?onlyoffice=proxydownload&fileId=' + encodeURIComponent(fileId);
-                        if (key) url += '&key=' + encodeURIComponent(key);
-                        window.location.href = url;
-                    } catch (e) { }
-                }
-
-                try {
-                    var el = document.getElementById('weBusyOverlay');
-                    if (el) el.style.display = 'flex';
-                } catch (e) { }
-
-                try {
-                    if (window._docEditor && window._docEditor.requestSave) {
-                        window._docEditor.requestSave();
-                    }
-                } catch (e) { }
-
-                var started = Date.now();
-                var timeoutMs = 15000;
-                var intervalMs = 500;
-
-                function poll() {
-                    var elapsed = Date.now() - started;
-                    if (elapsed > timeoutMs) {
-                        doDownloadPostBack();
-                        return;
-                    }
-
-                    var url = 'Default?onlyoffice=savestatus&fileId=' + encodeURIComponent(fileId);
-                    if (key) url += '&key=' + encodeURIComponent(key);
-
-                    try {
-                        fetch(url, { cache: 'no-store' })
-                            .then(function (r) { return r.json(); })
-                            .then(function (j) {
-                                if (j && j.saved === true) {
-                                    doDownloadPostBack();
-                                    return;
-                                }
-                                setTimeout(poll, intervalMs);
-                            })
-                            .catch(function () {
-                                setTimeout(poll, intervalMs);
-                            });
-                    } catch (e) {
-                        setTimeout(poll, intervalMs);
-                    }
-                }
-
-                poll();
-                return false;
-            };
-
             window.WebEditor_trySaveThenDownload = function () {
                 var editor = window._docEditor;
                 if (editor && typeof editor.downloadAs === 'function') {
                     try { if (typeof window.WebEditor_setBusy === 'function') window.WebEditor_setBusy(true); } catch (e) { }
                     try {
                         editor.downloadAs();
-                        return false;
-                    } catch (e) { }
+                    } catch (e) {
+                        try { if (typeof window.WebEditor_setBusy === 'function') window.WebEditor_setBusy(false); } catch (e2) { }
+                    }
                 }
-
-                return window.WebEditor_startLegacySaveThenDownload();
+                return false;
             };
 
         </script>

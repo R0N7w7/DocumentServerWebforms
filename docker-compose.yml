@@ -2,21 +2,21 @@ version: '3.8'
 
 services:
   onlyoffice:
-    # Cambiamos a la versión sin límites
     image: ghcr.io/thomisus/onlyoffice-documentserver-unlimited:latest
     container_name: onlyofficeVS
     restart: always
     privileged: true
     ports:
       - "8085:80"
+      - "4443:443" # Cambiamos solo el puerto de Windows
     environment:
       - JWT_ENABLED=true
       - JWT_SECRET=secreto_personalizado
       - JWT_HEADER=Authorization
-    # NOTA: Si ya tenías datos en el contenedor anterior, 
-    # se borrarán al cambiar la imagen a menos que uses volúmenes.
-    # volumes:
-    #   - ./onlyoffice/logs:/var/log/onlyoffice
-    #   - ./onlyoffice/data:/var/www/onlyoffice/Data
-    #   - ./onlyoffice/lib:/var/lib/onlyoffice
-    #   - ./onlyoffice/db:/var/lib/postgresql
+      # Configuramos ONLYOFFICE para que use los certificados
+      - SSL_CERTIFICATE_PATH=/var/www/onlyoffice/Data/certs/tls.crt
+      - SSL_KEY_PATH=/var/www/onlyoffice/Data/certs/tls.key
+      - SSL_DHPARAM_PATH=/var/www/onlyoffice/Data/certs/dhparam.pem
+    volumes:
+      # IMPORTANTE: Usa rutas absolutas de Windows o relativas al docker-compose.yml
+      - C:/onlyoffice-data:/var/www/onlyoffice/Data

@@ -4,19 +4,15 @@ using System.Text;
 using System.Web;
 using System.Web.Script.Serialization;
 using System.Web.UI;
-using System.Net;
 
 namespace WebEditor
 {
     public partial class _Default : Page
     {
         private const string UploadFolderVirtual = "~/App_Data/uploads";
-        // Producción: no escribir logs de callbacks en disco por defecto.
-        private const bool EnableOnlyOfficeCallbackLogging = false;
 
         // Centraliza aquí la configuración de red/OnlyOffice.
         // - PublicBaseUrl: URL pública de esta app (la que el Document Server puede alcanzar)
-        // - DocumentServerUrl: URL del OnlyOffice Document Server (si algún día la usas desde el cliente/servidor)
         // - JwtSecret: secreto compartido con Document Server
         private static class OnlyOfficeSettings
         {
@@ -31,88 +27,14 @@ namespace WebEditor
                 if (!string.IsNullOrWhiteSpace(PublicBaseUrlOverride))
                     return PublicBaseUrlOverride.TrimEnd('/');
 
-                // Fallback: usa la URL de la petición actual.
-                // OJO: esto sólo funciona si Document Server puede resolver/alcanzar esa misma URL.
-                if (request?.Url == null) 
+                if (request?.Url == null)
                     return null;
 
                 var baseUri = request.Url;
                 var appPath = request.ApplicationPath ?? "/";
-
-                // Normaliza para que quede: scheme://host[:port]/[app]
                 var path = appPath == "/" ? "/" : appPath.TrimEnd('/') + "/";
                 var builder = new UriBuilder(baseUri.Scheme, baseUri.Host, baseUri.Port, path);
                 return builder.Uri.ToString().TrimEnd('/');
-            }
-        }
-
-        private static bool TryReadOnlyOfficeKeyFromJwt(string token, out string key)
-        {
-            key = null;
-
-            try
-            {
-                var parts = token.Split('.');
-                if (parts.Length != 3) return false;
-
-                var payloadJson = Base64UrlDecodeToString(parts[1]);
-                if (string.IsNullOrWhiteSpace(payloadJson)) return false;
-
-                var serializer = new JavaScriptSerializer();
-                var root = serializer.DeserializeObject(payloadJson) as System.Collections.IDictionary;
-                if (root == null) return false;
-
-                var payload = root["payload"] as System.Collections.IDictionary;
-                if (payload == null) return false;
-
-                if (payload.Contains("key") && payload["key"] != null)
-                {
-                    key = payload["key"].ToString();
-                }
-
-                return !string.IsNullOrWhiteSpace(key);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        private static readonly CallbackUrlStore CallbackUrls = new CallbackUrlStore();
-
-        private sealed class CallbackUrlStore
-        {
-            internal sealed class SavedUrlInfo
-            {
-                public string Url { get; set; }
-                public DateTime UtcSavedAt { get; set; }
-            }
-
-            private readonly System.Collections.Concurrent.ConcurrentDictionary<string, SavedUrlInfo> _savedByKey =
-                new System.Collections.Concurrent.ConcurrentDictionary<string, SavedUrlInfo>(StringComparer.OrdinalIgnoreCase);
-
-            public bool TryGet(string lookupKey, out SavedUrlInfo saved) => _savedByKey.TryGetValue(lookupKey ?? string.Empty, out saved);
-
-            public void Upsert(string key, string url)
-            {
-                if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(url)) return;
-                _savedByKey[key] = new SavedUrlInfo { Url = url, UtcSavedAt = DateTime.UtcNow };
-            }
-
-            public bool TryFindByContainedFileId(string fileId, out SavedUrlInfo match)
-            {
-                match = null;
-                if (string.IsNullOrWhiteSpace(fileId)) return false;
-                foreach (var kvp in _savedByKey)
-                {
-                    var u = kvp.Value?.Url;
-                    if (!string.IsNullOrWhiteSpace(u) && u.IndexOf(fileId, StringComparison.OrdinalIgnoreCase) >= 0)
-                    {
-                        match = kvp.Value;
-                        return true;
-                    }
-                }
-                return false;
             }
         }
 
@@ -120,12 +42,10 @@ namespace WebEditor
 
         protected void Page_Load(object sender, EventArgs e)
         {
-            // Expose the UniqueID for safe client-side postback without relying on inline server blocks.
-            hfDownloadUniqueId.Value = btnDownload?.UniqueID ?? string.Empty;
-
+            // OnlyOffice envía callbacks POST al callbackUrl; respondemos siempre OK.
             if (IsCallbackRequest())
             {
-                ProcessOnlyOfficeCallback();
+                RespondJson("{\"error\":0}");
                 return;
             }
 
@@ -157,7 +77,6 @@ namespace WebEditor
 
             hfFileId.Value = fileId;
             hfDocKey.Value = GenerateOnlyOfficeDocumentKey(fileId);
-            btnDownload.Enabled = true;
 
             OnlyOfficeConfigJson = BuildOnlyOfficeConfigJson(originalName, storedName);
             litStatus.Text = string.Empty;
@@ -165,9 +84,6 @@ namespace WebEditor
 
         private static string GenerateOnlyOfficeDocumentKey(string fileId)
         {
-            // Mantener un formato tipo `shardkey_suffix` como el que se observa en los callbacks/logs.
-            // Esto hace que `document.key` (y por ende el key devuelto por OnlyOffice) sea estable y predecible.
-            // fileId ya viene como hex de 32 chars, tomamos 20 para shard y 4 para sufijo.
             if (string.IsNullOrWhiteSpace(fileId))
                 return Guid.NewGuid().ToString("N");
 
@@ -180,202 +96,10 @@ namespace WebEditor
             return shard + "_" + suffix;
         }
 
-        protected void btnDownload_Click(object sender, EventArgs e)
-        {
-            var fileId = hfFileId.Value;
-            if (string.IsNullOrWhiteSpace(fileId))
-            {
-                litStatus.Text = "<div class='text-danger mt-2'>No hay archivo para descargar.</div>";
-                return;
-            }
-
-            var docKey = hfDocKey.Value;
-            var url = "~/Default.aspx?onlyoffice=proxydownload&fileId=" + HttpUtility.UrlEncode(fileId);
-            if (!string.IsNullOrWhiteSpace(docKey))
-            {
-                url += "&key=" + HttpUtility.UrlEncode(docKey);
-            }
-
-            Response.Redirect(url, endResponse: false);
-            Context.ApplicationInstance.CompleteRequest();
-        }
-
         private bool IsCallbackRequest()
         {
             return string.Equals(Request.QueryString["onlyoffice"], "callback", StringComparison.OrdinalIgnoreCase);
         }
-
-        private void ProcessOnlyOfficeCallback()
-        {
-            string body;
-            using (var reader = new StreamReader(Request.InputStream))
-            {
-                body = reader.ReadToEnd();
-            }
-
-            var serializer = new JavaScriptSerializer();
-            dynamic payload;
-            try
-            {
-                payload = serializer.DeserializeObject(body);
-            }
-            catch
-            {
-                RespondJson("{\"error\":1}");
-                return;
-            }
-
-            var callbackToken = TryGetString(payload, "token");
-            if (string.IsNullOrWhiteSpace(callbackToken))
-            {
-                callbackToken = TryGetBearerToken(Request);
-            }
-
-            if (!string.IsNullOrWhiteSpace(callbackToken) && !ValidateJwt(callbackToken))
-            {
-                RespondJson("{\"error\":1}");
-                return;
-            }
-
-            // status/url pueden venir en el body o dentro del JWT (Authorization: Bearer)
-            var status = TryGetInt(payload, "status");
-            var downloadUrl = TryGetString(payload, "url");
-            if (string.IsNullOrWhiteSpace(downloadUrl))
-            {
-                var dataObj = TryGetDict(payload, "data");
-                downloadUrl = TryGetString(dataObj, "url");
-            }
-
-            if (status == 0 && string.IsNullOrWhiteSpace(downloadUrl) && !string.IsNullOrWhiteSpace(callbackToken))
-            {
-                int jwtStatus;
-                string jwtUrl;
-                if (TryReadOnlyOfficeCallbackFromJwt(callbackToken, out jwtStatus, out jwtUrl))
-                {
-                    status = jwtStatus;
-                    downloadUrl = jwtUrl;
-                }
-            }
-
-            var fileId = Request.QueryString["fileId"];
-            if (string.IsNullOrWhiteSpace(fileId))
-            {
-                RespondJson("{\"error\":1}");
-                return;
-            }
-
-            // IMPORTANT: OnlyOffice identifica el documento por `key` (no por nuestro fileId). En Docker logs
-            // se ve `key` como algo tipo `bfd32f7bdab188ada7ca_6047`. Ese valor viene en el callback.
-            string docKey = TryGetString(payload, "key");
-            if (string.IsNullOrWhiteSpace(docKey) && !string.IsNullOrWhiteSpace(callbackToken))
-            {
-                TryReadOnlyOfficeKeyFromJwt(callbackToken, out docKey);
-            }
-
-            TryLogOnlyOfficeCallback(body, status, downloadUrl, (docKey ?? "") + " fileId=" + fileId);
-
-            // status 2 = MustSave, 6 = MustForceSave, 7 = Corrupted (puede venir con url en algunas configs)
-            if ((status == 2 || status == 6 || status == 7) && !string.IsNullOrWhiteSpace(downloadUrl))
-            {
-                // Guardar por docKey si existe; fallback por fileId.
-                var storeKey = !string.IsNullOrWhiteSpace(docKey) ? docKey : fileId;
-                CallbackUrls.Upsert(storeKey, downloadUrl);
-            }
-
-            RespondJson("{\"error\":0}");
-        }
-
-        private static void TryLogOnlyOfficeCallback(string body, int status, string url, string fileId)
-        {
-            if (!EnableOnlyOfficeCallbackLogging)
-                return;
-
-            try
-            {
-                var ctx = HttpContext.Current;
-                if (ctx == null) return;
-                var logPath = ctx.Server.MapPath("~/App_Data/onlyoffice-callback.log");
-                Directory.CreateDirectory(Path.GetDirectoryName(logPath));
-                File.AppendAllText(logPath,
-                    DateTime.UtcNow.ToString("o") + " fileId=" + fileId + " status=" + status + " url=" + (url ?? "") + Environment.NewLine +
-                    body + Environment.NewLine + Environment.NewLine);
-            }
-            catch
-            {
-                // ignore
-            }
-        }
-
-        private static System.Collections.IDictionary TryGetDict(dynamic dict, string key)
-        {
-            if (dict == null) return null;
-            if (!(dict is System.Collections.IDictionary d)) return null;
-            if (!d.Contains(key) || d[key] == null) return null;
-            return d[key] as System.Collections.IDictionary;
-        }
-
-        private static string TryGetBearerToken(HttpRequest request)
-        {
-            var auth = request?.Headers?["Authorization"];
-            if (string.IsNullOrWhiteSpace(auth)) return null;
-            const string prefix = "Bearer ";
-            if (!auth.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return null;
-            return auth.Substring(prefix.Length).Trim();
-        }
-
-        // Lee claims del JWT sin validar firma (ya se validó arriba). ONLYOFFICE mete `status`/`url` dentro de `payload`.
-        private static bool TryReadOnlyOfficeCallbackFromJwt(string token, out int status, out string url)
-        {
-            status = 0;
-            url = null;
-
-            try
-            {
-                var parts = token.Split('.');
-                if (parts.Length != 3) return false;
-
-                var payloadJson = Base64UrlDecodeToString(parts[1]);
-                if (string.IsNullOrWhiteSpace(payloadJson)) return false;
-
-                var serializer = new JavaScriptSerializer();
-                var root = serializer.DeserializeObject(payloadJson) as System.Collections.IDictionary;
-                if (root == null) return false;
-
-                var payload = root["payload"] as System.Collections.IDictionary;
-                if (payload == null) return false;
-
-                if (payload.Contains("status") && payload["status"] != null)
-                {
-                    int.TryParse(payload["status"].ToString(), out status);
-                }
-
-                if (payload.Contains("url") && payload["url"] != null)
-                {
-                    url = payload["url"].ToString();
-                }
-
-                return status != 0 || !string.IsNullOrWhiteSpace(url);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        private static string Base64UrlDecodeToString(string input)
-        {
-            if (string.IsNullOrWhiteSpace(input)) return null;
-            var s = input.Replace('-', '+').Replace('_', '/');
-            switch (s.Length % 4)
-            {
-                case 2: s += "=="; break;
-                case 3: s += "="; break;
-            }
-
-            var bytes = Convert.FromBase64String(s);
-            return Encoding.UTF8.GetString(bytes);
-        }
-
 
         private string BuildOnlyOfficeConfigJson(string originalName = null, string storedName = null)
         {
@@ -420,13 +144,13 @@ namespace WebEditor
             var configJson = serializer.Serialize(configObject);
             var token = OnlyOfficeJwtHelper.Create(configJson, OnlyOfficeSettings.JwtSecret);
 
-            // Return final config with token field at top-level (OnlyOffice expects it there when JWT is enabled)
             var finalJson = "{\"token\":" + serializer.Serialize(token) + ",\"document\":" + serializer.Serialize(configObject.document) + ",\"documentType\":" + serializer.Serialize(configObject.documentType) + ",\"editorConfig\":" + serializer.Serialize(configObject.editorConfig) + "}";
             return finalJson;
         }
 
         protected override void Render(HtmlTextWriter writer)
         {
+            // Sirve el archivo original para que Document Server lo cargue en el editor.
             if (string.Equals(Request.QueryString["onlyoffice"], "download", StringComparison.OrdinalIgnoreCase))
             {
                 var fileId = Request.QueryString["fileId"];
@@ -442,119 +166,8 @@ namespace WebEditor
                 return;
             }
 
-            if (string.Equals(Request.QueryString["onlyoffice"], "proxydownload", StringComparison.OrdinalIgnoreCase))
-            {
-                // La descarga debe consultar por `key` (docKey), no por `fileId`, porque el callback se indexa por key.
-                var docKey = Request.QueryString["key"];
-                var fileId = Request.QueryString["fileId"];
-                var lookupKey = !string.IsNullOrWhiteSpace(docKey) ? docKey : fileId;
-
-                if (string.IsNullOrWhiteSpace(lookupKey))
-                {
-                    Response.StatusCode = 400;
-                    Response.End();
-                    return;
-                }
-
-                if (!CallbackUrls.TryGet(lookupKey, out var saved) || string.IsNullOrWhiteSpace(saved?.Url))
-                {
-                    // Fallback: intentar encontrar una URL guardada que contenga el `fileId` (o parte) en la ruta.
-                    if (!string.IsNullOrWhiteSpace(fileId))
-                    {
-                        CallbackUrls.TryFindByContainedFileId(fileId, out saved);
-                    }
-
-                    if (saved == null || string.IsNullOrWhiteSpace(saved.Url))
-                    {
-                    // Aún no llegó callback con status=2/6, por lo tanto no hay URL del archivo modificado.
-                    Response.StatusCode = 409;
-                    Response.ContentType = "application/json";
-                    Response.Write("{\"error\":1,\"message\":\"No hay versión guardada todavía.\"}");
-                    Response.End();
-                    return;
-                    }
-                }
-
-                ProxyDownloadFromOnlyOffice(saved.Url, fileId);
-                return;
-            }
-
-            if (string.Equals(Request.QueryString["onlyoffice"], "savestatus", StringComparison.OrdinalIgnoreCase))
-            {
-                var docKey = Request.QueryString["key"];
-                var fileId = Request.QueryString["fileId"];
-                var lookupKey = !string.IsNullOrWhiteSpace(docKey) ? docKey : fileId;
-
-                CallbackUrlStore.SavedUrlInfo saved = null;
-                if (!string.IsNullOrWhiteSpace(lookupKey))
-                {
-                    CallbackUrls.TryGet(lookupKey, out saved);
-
-                    if ((saved == null || string.IsNullOrWhiteSpace(saved.Url)) && !string.IsNullOrWhiteSpace(fileId))
-                        CallbackUrls.TryFindByContainedFileId(fileId, out saved);
-                }
-
-                var has = saved != null && !string.IsNullOrWhiteSpace(saved.Url);
-                var ageMs = has ? (long)Math.Max(0, (DateTime.UtcNow - saved.UtcSavedAt).TotalMilliseconds) : -1;
-
-                Response.Clear();
-                Response.StatusCode = 200;
-                Response.ContentType = "application/json";
-                Response.Write("{\"saved\":" + (has ? "true" : "false") + ",\"ageMs\":" + ageMs.ToString() + "}");
-                Response.End();
-                return;
-            }
-
             base.Render(writer);
         }
-
-        private void ProxyDownloadFromOnlyOffice(string url, string fileId)
-        {
-            // Nombre de descarga: intenta usar el original si existe.
-            var storedName = FindStoredName(fileId);
-            var downloadName = storedName ?? (fileId + ".docx");
-
-            Response.Clear();
-            Response.BufferOutput = false;
-            Response.ContentType = "application/octet-stream";
-            Response.AddHeader("Content-Disposition", "attachment; filename=\"" + downloadName.Replace("\"", "") + "\"");
-
-            var request = (HttpWebRequest)WebRequest.Create(url);
-            request.Method = "GET";
-            request.AllowAutoRedirect = true;
-            request.ReadWriteTimeout = 30000;
-            request.Timeout = 30000;
-
-            using (var remote = (HttpWebResponse)request.GetResponse())
-            {
-                if (!string.IsNullOrWhiteSpace(remote.ContentType))
-                {
-                    Response.ContentType = remote.ContentType;
-                }
-                if (remote.ContentLength > 0)
-                {
-                    Response.AddHeader("Content-Length", remote.ContentLength.ToString());
-                }
-
-                using (var src = remote.GetResponseStream())
-                {
-                    if (src == null)
-                    {
-                        Response.StatusCode = 502;
-                        Response.End();
-                        return;
-                    }
-
-                    src.CopyTo(Response.OutputStream);
-                }
-            }
-
-            Response.Flush();
-            Response.End();
-        }
-
-
-        private bool ValidateJwt(string token) => OnlyOfficeJwtHelper.Validate(token, OnlyOfficeSettings.JwtSecret);
 
         private static class OnlyOfficeJwtHelper
         {
@@ -572,20 +185,6 @@ namespace WebEditor
                 return signingInput + "." + signature;
             }
 
-            public static bool Validate(string token, string secret)
-            {
-                if (string.IsNullOrWhiteSpace(token)) return false;
-                if (secret == null) secret = string.Empty;
-
-                var parts = token.Split('.');
-                if (parts.Length != 3) return false;
-
-                var signingInput = parts[0] + "." + parts[1];
-                var expectedSig = Base64UrlEncode(HmacSha256(Encoding.UTF8.GetBytes(secret), Encoding.UTF8.GetBytes(signingInput)));
-                var actualSig = parts[2];
-                return FixedTimeEquals(Encoding.ASCII.GetBytes(expectedSig), Encoding.ASCII.GetBytes(actualSig));
-            }
-
             private static string Base64UrlEncode(byte[] input)
             {
                 return Convert.ToBase64String(input)
@@ -600,14 +199,6 @@ namespace WebEditor
                 {
                     return h.ComputeHash(data);
                 }
-            }
-
-            private static bool FixedTimeEquals(byte[] a, byte[] b)
-            {
-                if (a == null || b == null || a.Length != b.Length) return false;
-                var diff = 0;
-                for (int i = 0; i < a.Length; i++) diff |= a[i] ^ b[i];
-                return diff == 0;
             }
         }
 
@@ -661,24 +252,6 @@ namespace WebEditor
             Response.End();
         }
 
-        private static int TryGetInt(dynamic dict, string key)
-        {
-            if (dict == null) return 0;
-            if (!(dict is System.Collections.IDictionary d)) return 0;
-            if (!d.Contains(key) || d[key] == null) return 0;
-            int val;
-            if (int.TryParse(d[key].ToString(), out val)) return val;
-            return 0;
-        }
-
-        private static string TryGetString(dynamic dict, string key)
-        {
-            if (dict == null) return null;
-            if (!(dict is System.Collections.IDictionary d)) return null;
-            if (!d.Contains(key) || d[key] == null) return null;
-            return d[key].ToString();
-        }
-
         private void RespondJson(string json)
         {
             Response.Clear();
@@ -686,6 +259,5 @@ namespace WebEditor
             Response.Write(json);
             Response.End();
         }
-
     }
 }
