@@ -40,7 +40,8 @@ namespace WebEditor
 
             docEditor.ClearEditedDocument();
 
-            var fileName = "editado_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".docx";
+            var ext = Path.GetExtension(docEditor.DocumentName ?? ".docx");
+            var fileName = docEditor.DocumentName ?? ("documento" + ext);
             Response.Clear();
             Response.ContentType = "application/octet-stream";
             Response.AddHeader("Content-Disposition", "attachment; filename=" + fileName);
