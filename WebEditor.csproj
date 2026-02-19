@@ -118,7 +118,9 @@
     <Content Include="Content\bootstrap.rtl.min.css" />
     <Content Include="Content\Site.css" />
     <Content Include="Content\WebEditor.css" />
+    <Content Include="Controls\OnlyOfficeEditor.ascx" />
     <Content Include="Default.aspx" />
+    <Content Include="Handlers\OnlyOfficeHandler.ashx" />
     <Content Include="favicon.ico" />
     <Content Include="Global.asax" />
     <Content Include="Scripts\bootstrap.bundle.js" />
@@ -155,6 +157,7 @@
     <Content Include="Scripts\jquery-3.7.0.slim.js" />
     <Content Include="Scripts\jquery-3.7.0.slim.min.js" />
     <Content Include="Scripts\modernizr-2.8.3.js" />
+    <Content Include="Scripts\OnlyOfficeEditor.js" />
     <Content Include="Scripts\WebForms\DetailsView.js" />
     <Content Include="Scripts\WebForms\Focus.js" />
     <Content Include="Scripts\WebForms\GridView.js" />
@@ -183,7 +186,7 @@
     <Content Include="Site.Mobile.Master" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="App_Code\OnlyOfficeJwt.cs" />
+    <Compile Include="App_Code\OnlyOfficeJwt.cs" />
 
     <Compile Include="App_Start\BundleConfig.cs" />
     <Compile Include="App_Start\RouteConfig.cs" />
@@ -193,6 +196,16 @@
     </Compile>
     <Compile Include="Default.aspx.designer.cs">
       <DependentUpon>Default.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Controls\OnlyOfficeEditor.ascx.cs">
+      <DependentUpon>OnlyOfficeEditor.ascx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Controls\OnlyOfficeEditor.ascx.designer.cs">
+      <DependentUpon>OnlyOfficeEditor.ascx</DependentUpon>
+    </Compile>
+    <Compile Include="Handlers\OnlyOfficeHandler.ashx.cs">
+      <DependentUpon>OnlyOfficeHandler.ashx</DependentUpon>
     </Compile>
     <Compile Include="Global.asax.cs">
       <DependentUpon>Global.asax</DependentUpon>

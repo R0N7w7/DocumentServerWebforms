@@ -42,22 +42,13 @@ namespace WebEditor
         protected global::System.Web.UI.WebControls.Literal litStatus;
 
         /// <summary>
-        /// Control hfDocKey.
+        /// Control docEditor — editor OnlyOffice modular.
         /// </summary>
         /// <remarks>
         /// Campo generado automáticamente.
         /// Para modificarlo, mueva la declaración del campo del archivo del diseñador al archivo de código subyacente.
         /// </remarks>
-        protected global::System.Web.UI.WebControls.HiddenField hfDocKey;
-
-        /// <summary>
-        /// Control hfFileId.
-        /// </summary>
-        /// <remarks>
-        /// Campo generado automáticamente.
-        /// Para modificarlo, mueva la declaración del campo del archivo del diseñador al archivo de código subyacente.
-        /// </remarks>
-        protected global::System.Web.UI.WebControls.HiddenField hfFileId;
+        protected global::WebEditor.Controls.OnlyOfficeEditor docEditor;
 
     }
 }
