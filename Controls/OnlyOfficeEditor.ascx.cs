@@ -3,6 +3,7 @@ using System.IO;
 using System.Web;
 using System.Web.Script.Serialization;
 using System.Web.UI;
+using System.Web.UI.WebControls;
 
 namespace WebEditor.Controls
 {
@@ -104,6 +105,26 @@ namespace WebEditor.Controls
         public string UserDisplayName { get; set; } = "Usuario";
 
         // ═══════════════════════════════════════════════════════════════
+        //  Propiedades para enlazar botones externos (sin JS en la página)
+        // ═══════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// IDs de los controles (botón, LinkButton, etc.) que al hacer clic capturarán
+        /// el documento editado, lo almacenarán en un HiddenField interno, y
+        /// dispararán un postback. Tras el postback se pueden leer los bytes
+        /// con <see cref="GetEditedDocumentBytes()"/>.
+        /// Acepta un solo ID o varios separados por coma: "btn1,btn2,btn3".
+        /// El control conecta automáticamente el JavaScript necesario.
+        /// </summary>
+        public string CaptureTriggerId { get; set; }
+
+        // ═══════════════════════════════════════════════════════════════
+        //  Evento de documento capturado
+        // ═══════════════════════════════════════════════════════════════
+
+
+
+        // ═══════════════════════════════════════════════════════════════
         //  Propiedades computadas (solo lectura)
         // ═══════════════════════════════════════════════════════════════
 
@@ -118,6 +139,45 @@ namespace WebEditor.Controls
             !string.IsNullOrWhiteSpace(DocumentUrl)
             && !string.IsNullOrWhiteSpace(DocumentName)
             && !string.IsNullOrWhiteSpace(DocumentKey);
+
+        /// <summary>
+        /// ID del HiddenField que almacena el documento editado en base64.
+        /// Se usa desde JavaScript para inyectar el contenido antes del postback.
+        /// </summary>
+        public string HiddenFieldClientId => hfEditedDocumentBase64.ClientID;
+
+        // ═══════════════════════════════════════════════════════════════
+        //  Acceso al documento editado desde code-behind
+        // ═══════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// Indica si el HiddenField contiene un documento editado (tras un postback
+        /// disparado por <c>captureToHiddenField</c> en JavaScript).
+        /// </summary>
+        public bool HasEditedDocument =>
+            !string.IsNullOrWhiteSpace(hfEditedDocumentBase64.Value);
+
+        /// <summary>
+        /// Obtiene los bytes del documento editado que fue capturado en el HiddenField
+        /// por la función JS <c>OnlyOfficeEditorModule.captureToHiddenField()</c>.
+        /// Retorna <c>null</c> si no hay documento capturado.
+        /// </summary>
+        public byte[] GetEditedDocumentBytes()
+        {
+            var b64 = hfEditedDocumentBase64.Value;
+            if (string.IsNullOrWhiteSpace(b64)) return null;
+            try { return Convert.FromBase64String(b64); }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// Limpia el contenido del HiddenField (para liberar memoria del ViewState
+        /// después de haber consumido los bytes).
+        /// </summary>
+        public void ClearEditedDocument()
+        {
+            hfEditedDocumentBase64.Value = string.Empty;
+        }
 
         // ═══════════════════════════════════════════════════════════════
         //  Métodos de conveniencia para cargar documentos
@@ -184,9 +244,14 @@ namespace WebEditor.Controls
         //  Ciclo de vida
         // ═══════════════════════════════════════════════════════════════
 
+        protected void Page_Load(object sender, EventArgs e)
+        {
+        }
+
         protected void Page_PreRender(object sender, EventArgs e)
         {
             ConfigJson = HasDocument ? BuildConfigJson() : "null";
+            RegisterTriggerScripts();
         }
 
         // ═══════════════════════════════════════════════════════════════
@@ -260,5 +325,86 @@ namespace WebEditor.Controls
                 default: return "word";
             }
         }
+
+        /// <summary>
+        /// Registra automáticamente los scripts de arranque del editor y
+        /// los handlers de clic para DownloadTriggerId / CaptureTriggerId.
+        /// </summary>
+        private void RegisterTriggerScripts()
+        {
+            if (!HasDocument) return;
+
+            var cs = Page.ClientScript;
+            var type = GetType();
+            var uid = ClientID;
+
+            // 1─ Registrar los <script src> del API y del módulo (una sola vez por página)
+            var apiKey = "oo_api_script";
+            if (!cs.IsClientScriptIncludeRegistered(type, apiKey))
+                cs.RegisterClientScriptInclude(type, apiKey, OnlyOfficeApiUrl);
+
+            var moduleKey = "oo_module_script";
+            if (!cs.IsClientScriptIncludeRegistered(type, moduleKey))
+                cs.RegisterClientScriptInclude(type, moduleKey, ResolveUrl("~/Scripts/OnlyOfficeEditor.js"));
+
+            // 2─ Registrar la URL del proxy (una sola vez por página)
+            var proxyKey = "oo_proxy_url";
+            if (!cs.IsStartupScriptRegistered(type, proxyKey))
+            {
+                var proxyUrl = ResolveUrl("~/Handlers/OnlyOfficeHandler.ashx?action=proxy&url=");
+                var proxyScript = string.Format(
+                    "window.__onlyOfficeProxyUrl='{0}';", proxyUrl);
+                cs.RegisterStartupScript(type, proxyKey, proxyScript, true);
+            }
+
+            // 3─ Script de inicialización del editor (por instancia)
+            var initKey = "oo_init_" + uid;
+            if (!cs.IsStartupScriptRegistered(type, initKey))
+            {
+                var initScript = string.Format(
+                    @"(function(){{ var cfg={0}; if(cfg) OnlyOfficeEditorModule.init('{1}',cfg); }})();",
+                    ConfigJson, EditorContainerId);
+                cs.RegisterStartupScript(type, initKey, initScript, true);
+            }
+
+            // 4─ Conectar botones de captura (guarda base64 → postback → OnClick)
+            if (!string.IsNullOrWhiteSpace(CaptureTriggerId))
+            {
+                var ids = CaptureTriggerId.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var rawId in ids)
+                {
+                    var id = rawId.Trim();
+                    if (string.IsNullOrEmpty(id)) continue;
+
+                    var capBtn = FindControlRecursive(Page, id);
+                    if (capBtn == null) continue;
+
+                    var capJs = string.Format(
+                        "if(typeof OnlyOfficeEditorModule!=='undefined'){{OnlyOfficeEditorModule.captureToHiddenField('{0}','{1}',{{autoPostBack:true,postBackTarget:'{2}'}}).catch(function(e){{console.error(e)}});}};return false;",
+                        EditorContainerId,
+                        hfEditedDocumentBase64.ClientID,
+                        capBtn.UniqueID);
+
+                    if (capBtn is IAttributeAccessor acc)
+                        acc.SetAttribute("onclick", capJs);
+                    else if (capBtn is WebControl wc)
+                        wc.Attributes["onclick"] = capJs;
+                }
+            }
+        }
+
+        /// <summary>Busca un control por ID recursión arriba y abajo en el árbol.</summary>
+        private static Control FindControlRecursive(Control root, string id)
+        {
+            if (root == null || string.IsNullOrWhiteSpace(id)) return null;
+            if (root.ID == id) return root;
+            foreach (Control c in root.Controls)
+            {
+                var found = FindControlRecursive(c, id);
+                if (found != null) return found;
+            }
+            return null;
+        }
     }
+
 }

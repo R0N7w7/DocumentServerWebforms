@@ -42,6 +42,16 @@ namespace WebEditor
         protected global::System.Web.UI.WebControls.Literal litStatus;
 
         /// <summary>
+        /// Control btnDescargar — descarga el documento editado en el navegador.
+        /// </summary>
+        protected global::System.Web.UI.WebControls.Button btnDescargar;
+
+        /// <summary>
+        /// Control btnGuardar — guarda el documento editado en el servidor.
+        /// </summary>
+        protected global::System.Web.UI.WebControls.Button btnGuardar;
+
+        /// <summary>
         /// Control docEditor — editor OnlyOffice modular.
         /// </summary>
         /// <remarks>

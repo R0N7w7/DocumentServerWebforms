@@ -25,7 +25,8 @@
                         <div class="we-surface__meta">Vista del editor OnlyOffice</div>
                     </div>
                     <%-- ═══ Editor modular reutilizable ═══ --%>
-                    <oo:Editor ID="docEditor" runat="server" />
+                    <oo:Editor ID="docEditor" runat="server"
+                        CaptureTriggerId="btnDescargar" />
                 </div>
             </main>
 
@@ -69,24 +70,12 @@
                     <div class="we-divider"></div>
 
                     <div class="we-asideActions">
-                        <button type="button" id="btnDownload" class="btn we-btn we-btn-accent we-btn-block"
-                            onclick="return handleDownload();">Guardar y descargar</button>
-                        <div class="we-asideHint">Descarga la versión guardada tras completar los cambios.</div>
+                        <asp:Button ID="btnDescargar" runat="server" Text="Guardar y descargar"
+                            CssClass="btn we-btn we-btn-accent we-btn-block" OnClick="btnDescargar_Click" />
+                        <div class="we-asideHint">Descarga o guarda la versión editada tras completar los cambios.</div>
                     </div>
                 </div>
             </aside>
         </div>
     </div>
-
-    <script type="text/javascript">
-        function handleDownload() {
-            var containerId = '<%= docEditor.EditorContainerId %>';
-            if (typeof OnlyOfficeEditorModule !== 'undefined') {
-                OnlyOfficeEditorModule.downloadDocument(containerId).catch(function (err) {
-                    console.error('Error al descargar:', err);
-                });
-            }
-            return false;
-        }
-    </script>
 </asp:Content>

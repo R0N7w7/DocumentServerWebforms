@@ -10,7 +10,10 @@ namespace WebEditor.Controls
 {
     public partial class OnlyOfficeEditor
     {
-        // El control no contiene controles de servidor (runat="server")
-        // por lo que el designer queda vacío.
+        /// <summary>
+        /// HiddenField que almacena el documento editado en base64
+        /// tras invocar captureToHiddenField() desde JavaScript.
+        /// </summary>
+        protected global::System.Web.UI.WebControls.HiddenField hfEditedDocumentBase64;
     }
 }

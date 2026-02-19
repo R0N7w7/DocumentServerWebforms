@@ -10,15 +10,4 @@
     <div id="<%= EditorContainerId %>" class="we-editor" style="min-height:<%= EditorHeight %>;"></div>
 </div>
 
-<% if (HasDocument) { %>
-<script type="text/javascript" src="<%= OnlyOfficeApiUrl %>"></script>
-<script type="text/javascript" src="<%= ResolveUrl("~/Scripts/OnlyOfficeEditor.js") %>"></script>
-<script type="text/javascript">
-    (function () {
-        var cfg = <%= ConfigJson %>;
-        if (cfg) {
-            OnlyOfficeEditorModule.init('<%= EditorContainerId %>', cfg);
-        }
-    })();
-</script>
-<% } %>
+<asp:HiddenField ID="hfEditedDocumentBase64" runat="server" />

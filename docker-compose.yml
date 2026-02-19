@@ -17,6 +17,11 @@ services:
       - SSL_CERTIFICATE_PATH=/var/www/onlyoffice/Data/certs/tls.crt
       - SSL_KEY_PATH=/var/www/onlyoffice/Data/certs/tls.key
       - SSL_DHPARAM_PATH=/var/www/onlyoffice/Data/certs/dhparam.pem
+
+      # Configurar CORS para todo sitio
+      - CORS_ALLOWED_ORIGINS=*
+      - CORS_ALLOWED_METHODS=GET,POST,PUT,DELETE,OPTIONS
+      - CORS_ALLOWED_HEADERS=Authorization,Content-Type
     volumes:
       # IMPORTANTE: Usa rutas absolutas de Windows o relativas al docker-compose.yml
       - C:/onlyoffice-data:/var/www/onlyoffice/Data

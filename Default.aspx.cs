@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Web.UI;
 
 namespace WebEditor
@@ -7,8 +8,6 @@ namespace WebEditor
     {
         protected void Page_Load(object sender, EventArgs e)
         {
-            // La lógica de callbacks y descarga de archivos ahora está en
-            // Handlers/OnlyOfficeHandler.ashx (desacoplada de esta página).
         }
 
         protected void btnUpload_Click(object sender, EventArgs e)
@@ -19,10 +18,35 @@ namespace WebEditor
                 return;
             }
 
-            // Una sola línea: el control se encarga de guardar el archivo,
-            // generar URLs, firmar JWT y renderizar el editor.
             docEditor.SetDocumentFromBytes(fuFile.FileBytes, fuFile.FileName);
             litStatus.Text = string.Empty;
+        }
+
+        /// <summary>
+        /// Se dispara cuando el usuario hace clic en "Guardar en servidor".
+        /// El control ya capturó el documento; basta con llamar GetEditedDocumentBytes().
+        /// </summary>
+        /// <summary>
+        /// Descarga el documento editado en el navegador del cliente.
+        /// </summary>
+        protected void btnDescargar_Click(object sender, EventArgs e)
+        {
+            byte[] documentBytes = docEditor.GetEditedDocumentBytes();
+            if (documentBytes == null || documentBytes.Length == 0)
+            {
+                litStatus.Text = "<span class='text-warning'>No hay documento editado para descargar.</span>";
+                return;
+            }
+
+            docEditor.ClearEditedDocument();
+
+            var fileName = "editado_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".docx";
+            Response.Clear();
+            Response.ContentType = "application/octet-stream";
+            Response.AddHeader("Content-Disposition", "attachment; filename=" + fileName);
+            Response.AddHeader("Content-Length", documentBytes.Length.ToString());
+            Response.BinaryWrite(documentBytes);
+            Response.End();
         }
     }
 }

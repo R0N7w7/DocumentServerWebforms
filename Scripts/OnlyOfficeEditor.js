@@ -239,14 +239,21 @@ var OnlyOfficeEditorModule = (function () {
 
     /**
      * Obtiene el documento editado como Blob.
-     * NOTA: Requiere que Document Server tenga CORS configurado para esta origin.
+     * Usa un proxy server-side para evitar problemas de CORS con Document Server.
      * @param {string} containerId
      * @returns {Promise<Blob>}
      */
     function getEditedDocumentBlob(containerId) {
         return getEditedDocumentUrl(containerId).then(function (url) {
             if (!url) throw new Error('No se recibió URL de descarga');
-            return fetch(url).then(function (response) {
+
+            // Usar proxy server-side para evitar CORS
+            var proxyBase = window.__onlyOfficeProxyUrl;
+            var fetchUrl = proxyBase
+                ? proxyBase + encodeURIComponent(url)
+                : url;
+
+            return fetch(fetchUrl).then(function (response) {
                 if (!response.ok) throw new Error('Error al descargar: ' + response.status);
                 return response.blob();
             });
@@ -300,6 +307,64 @@ var OnlyOfficeEditorModule = (function () {
         _setBusy(containerId, isBusy);
     }
 
+    /**
+     * Captura el documento editado como base64 y lo almacena en un HiddenField,
+     * permitiendo acceder a los bytes desde code-behind en el siguiente postback.
+     *
+     * @param {string}  containerId     ID del contenedor del editor.
+     * @param {string}  hiddenFieldId   ClientID del HiddenField (usar <%= docEditor.HiddenFieldClientId %>).
+     * @param {object}  [options]       Opciones adicionales.
+     * @param {boolean} [options.autoPostBack=false]   Si es true, dispara __doPostBack automáticamente.
+     * @param {string}  [options.postBackTarget]        UniqueID del control para __doPostBack (requerido si autoPostBack=true).
+     * @param {string}  [options.postBackArgument='']   Argumento para __doPostBack.
+     * @param {function} [options.onCaptured]           Callback tras captura exitosa (recibe base64 string).
+     * @param {function} [options.onError]              Callback en caso de error.
+     * @returns {Promise<string>} El string base64 almacenado.
+     */
+    function captureToHiddenField(containerId, hiddenFieldId, options) {
+        options = options || {};
+        _setBusy(containerId, true);
+
+        return getEditedDocumentBlob(containerId)
+            .then(function (blob) {
+                return new Promise(function (resolve, reject) {
+                    var reader = new FileReader();
+                    reader.onload = function () {
+                        // result es "data:<mime>;base64,XXXX" — extraer solo la parte base64
+                        var dataUrl = reader.result;
+                        var base64 = dataUrl.indexOf(',') >= 0
+                            ? dataUrl.substring(dataUrl.indexOf(',') + 1)
+                            : dataUrl;
+                        resolve(base64);
+                    };
+                    reader.onerror = function () { reject(reader.error); };
+                    reader.readAsDataURL(blob);
+                });
+            })
+            .then(function (base64) {
+                // Guardar en el HiddenField
+                var hf = document.getElementById(hiddenFieldId);
+                if (!hf) throw new Error('HiddenField no encontrado: ' + hiddenFieldId);
+                hf.value = base64;
+
+                _setBusy(containerId, false);
+
+                if (options.onCaptured) options.onCaptured(base64);
+
+                // Disparar postback automáticamente si se solicitó
+                if (options.autoPostBack && typeof __doPostBack === 'function') {
+                    __doPostBack(options.postBackTarget || '', options.postBackArgument || '');
+                }
+
+                return base64;
+            })
+            .catch(function (err) {
+                _setBusy(containerId, false);
+                if (options.onError) options.onError(err);
+                throw err;
+            });
+    }
+
     // ── Interfaz pública ─────────────────────────────────────────────
     return {
         init: init,
@@ -308,6 +373,7 @@ var OnlyOfficeEditorModule = (function () {
         downloadDocument: downloadDocument,
         getEditor: getEditor,
         destroy: destroy,
-        setBusy: setBusy
+        setBusy: setBusy,
+        captureToHiddenField: captureToHiddenField
     };
 })();
