@@ -132,11 +132,11 @@ var OnlyOfficeEditorModule = (function () {
         config.editorConfig.customization = config.editorConfig.customization || {};
         var cust = config.editorConfig.customization;
         if (cust.uiTheme === undefined)          cust.uiTheme = 'theme-classic-light';
-        if (cust.compactToolbar === undefined)    cust.compactToolbar = true;
-        if (cust.toolbarNoTabs === undefined)     cust.toolbarNoTabs = true;
+        if (cust.compactToolbar === undefined)    cust.compactToolbar = false;
+        if (cust.toolbarNoTabs === undefined)     cust.toolbarNoTabs = false;
         if (cust.hideRightMenu === undefined)     cust.hideRightMenu = true;
         if (cust.hideRulers === undefined)        cust.hideRulers = true;
-        if (cust.showReviewChanges === undefined) cust.showReviewChanges = true;
+        if (cust.showReviewChanges === undefined) cust.showReviewChanges = false;
 
         // Resolvers pendientes de downloadAs
         var _downloadResolve = null;

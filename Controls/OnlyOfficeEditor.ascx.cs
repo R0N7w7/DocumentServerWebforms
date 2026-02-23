@@ -90,7 +90,7 @@ namespace WebEditor.Controls
         public string EditorHeight { get; set; } = "520px";
 
         /// <summary>URL completa al JS del API de OnlyOffice Document Server.</summary>
-        public string OnlyOfficeApiUrl { get; set; } = "https://192.168.10.34:4443/web-apps/apps/api/documents/api.js";
+        public string OnlyOfficeApiUrl { get; set; } = "https://192.168.10.14:4443/web-apps/apps/api/documents/api.js";
 
         /// <summary>Secreto JWT compartido con Document Server.</summary>
         public string JwtSecret { get; set; } = "secreto_personalizado";
