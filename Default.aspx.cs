@@ -18,20 +18,15 @@ namespace WebEditor
                 return;
             }
 
-            docEditor.SetDocumentFromBytes(fuFile.FileBytes, fuFile.FileName);
+            docEditor.SetDocumentFromBytes(fuFile.FileBytes, fuFile.FileName); // Carga el documento en el editor
             litStatus.Text = string.Empty;
         }
 
-        /// <summary>
-        /// Se dispara cuando el usuario hace clic en "Guardar en servidor".
-        /// El control ya capturó el documento; basta con llamar GetEditedDocumentBytes().
-        /// </summary>
-        /// <summary>
-        /// Descarga el documento editado en el navegador del cliente.
-        /// </summary>
         protected void btnDescargar_Click(object sender, EventArgs e)
         {
-            byte[] documentBytes = docEditor.GetEditedDocumentBytes();
+            // El evento puede acceder al documento editado solo si el ID del disparador se registró en el control OnlyOfficeEditor
+            byte[] documentBytes = docEditor.GetEditedDocumentBytes(); // Obtiene el documento editado como un arreglo de bytes
+
             if (documentBytes == null || documentBytes.Length == 0)
             {
                 litStatus.Text = "<span class='text-warning'>No hay documento editado para descargar.</span>";

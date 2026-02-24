@@ -6,15 +6,13 @@ using System.Web;
 
 namespace WebEditor.Handlers
 {
-    /// <summary>
     /// Handler HTTP genérico para servir documentos temporales al Document Server
     /// y recibir callbacks de guardado.
-    ///
+
     /// Endpoints:
     ///   ?action=download&amp;fileId=xxx  → Sirve el archivo almacenado en App_Data/uploads.
     ///   ?action=callback&amp;fileId=xxx  → Recibe notificación POST del Document Server.
     ///   ?action=proxy&amp;url=xxx        → Descarga un archivo del Document Server (server-to-server) y lo reenvía al cliente. Evita problemas de CORS.
-    /// </summary>
     public class OnlyOfficeHandler : IHttpHandler
     {
         private const string UploadFolder = "~/App_Data/uploads";
@@ -49,9 +47,7 @@ namespace WebEditor.Handlers
             }
         }
 
-        /// <summary>
         /// Sirve un archivo de App_Data/uploads para que Document Server lo cargue.
-        /// </summary>
         private static void ServeFile(HttpContext context)
         {
             var fileId = context.Request.QueryString["fileId"];
@@ -90,29 +86,19 @@ namespace WebEditor.Handlers
             context.Response.End();
         }
 
-        /// <summary>
         /// Recibe callbacks POST del Document Server (eventos de guardado).
         /// Responde siempre con {"error":0} para confirmar recepción.
-        /// </summary>
         private static void HandleCallback(HttpContext context)
         {
-            // Aquí se puede extender para procesar el JSON del callback:
-            //   var body = new StreamReader(context.Request.InputStream).ReadToEnd();
-            //   var data = new JavaScriptSerializer().Deserialize<Dictionary<string,object>>(body);
-            //   int status = Convert.ToInt32(data["status"]);
-            //   if (status == 2 || status == 6) { /* documento guardado → descargar de data["url"] */ }
-
             context.Response.Clear();
             context.Response.ContentType = "application/json";
             context.Response.Write("{\"error\":0}");
             context.Response.End();
         }
 
-        /// <summary>
         /// Descarga un archivo del Document Server (server-to-server) y lo reenvía
         /// al cliente. Esto evita el bloqueo de CORS que ocurre cuando el browser
         /// intenta hacer fetch() directamente al Document Server.
-        /// </summary>
         private static void ProxyDownload(HttpContext context)
         {
             var url = context.Request.QueryString["url"];

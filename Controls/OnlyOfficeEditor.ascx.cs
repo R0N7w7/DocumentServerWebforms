@@ -7,161 +7,118 @@ using System.Web.UI.WebControls;
 
 namespace WebEditor.Controls
 {
-    /// <summary>
     /// Control reutilizable que renderiza un editor OnlyOffice Document Server.
-    /// 
-    /// ── Uso en .aspx ──────────────────────────────────────────────────
-    ///   &lt;%@ Register Src="~/Controls/OnlyOfficeEditor.ascx" TagPrefix="oo" TagName="Editor" %&gt;
-    ///   &lt;oo:Editor ID="docEditor" runat="server" Mode="edit" EditorHeight="600px" /&gt;
-    /// 
-    /// ── Uso en code-behind ────────────────────────────────────────────
-    ///   // Opción A: pasar bytes directamente (el control guarda el archivo y genera URLs)
-    ///   docEditor.SetDocumentFromBytes(fileBytes, "reporte.docx");
-    /// 
-    ///   // Opción B: pasar ruta de archivo en el servidor
-    ///   docEditor.SetDocumentFromFile(@"C:\docs\reporte.docx");
-    /// 
-    ///   // Opción C: configurar URLs manualmente
-    ///   docEditor.DocumentUrl  = "http://…/download?file=1";
-    ///   docEditor.DocumentName = "reporte.docx";
-    ///   docEditor.DocumentKey  = "clave-unica";
-    ///   docEditor.CallbackUrl  = "http://…/callback";
-    /// 
-    /// ── API JavaScript del lado del cliente ────────────────────────────
-    ///   // Obtener URL del documento editado (Promise)
-    ///   OnlyOfficeEditorModule.getEditedDocumentUrl('containerId')
-    ///       .then(function(url) { /* url del archivo convertido */ });
-    /// 
-    ///   // Descargar directamente en el navegador
-    ///   OnlyOfficeEditorModule.downloadDocument('containerId');
-    /// 
-    ///   // Obtener como Blob (requiere CORS habilitado en Document Server)
-    ///   OnlyOfficeEditorModule.getEditedDocumentBlob('containerId')
-    ///       .then(function(blob) { /* subir blob a servidor, etc. */ });
-    /// 
-    ///   // Obtener instancia nativa DocsAPI.DocEditor
-    ///   var editor = OnlyOfficeEditorModule.getEditor('containerId');
-    /// </summary>
     public partial class OnlyOfficeEditor : UserControl
     {
         // ═══════════════════════════════════════════════════════════════
         //  Propiedades del documento (persistidas en ViewState)
         // ═══════════════════════════════════════════════════════════════
 
-        /// <summary>URL del documento accesible por Document Server.</summary>
+        /// URL del documento accesible por Document Server.
         public string DocumentUrl
         {
             get => (string)ViewState["DocumentUrl"];
             set => ViewState["DocumentUrl"] = value;
         }
 
-        /// <summary>Nombre original del documento (ej. "reporte.docx").</summary>
+        /// Nombre original del documento (ej. "reporte.docx").
         public string DocumentName
         {
             get => (string)ViewState["DocumentName"];
             set => ViewState["DocumentName"] = value;
         }
 
-        /// <summary>Clave única para el caché de Document Server. Cambiarla fuerza recarga.</summary>
+        /// Clave única para el caché de Document Server. Cambiarla fuerza recarga.
         public string DocumentKey
         {
             get => (string)ViewState["DocumentKey"];
             set => ViewState["DocumentKey"] = value;
         }
 
-        /// <summary>URL donde Document Server envía notificaciones de guardado.</summary>
+        /// URL donde Document Server envía notificaciones de guardado.
         public string CallbackUrl
         {
             get => (string)ViewState["CallbackUrl"];
             set => ViewState["CallbackUrl"] = value;
         }
 
-        // ═══════════════════════════════════════════════════════════════
-        //  Propiedades de configuración (se definen en el markup o en Page_Load)
-        // ═══════════════════════════════════════════════════════════════
+        // ═══════════════════════════════
+        //  Configuración de conexión con Document Server
+        // ═══════════════════════════════
 
-        /// <summary>"edit" o "view". Por defecto: "edit".</summary>
-        public string Mode { get; set; } = "edit";
-
-        /// <summary>Código de idioma (ej. "es", "en"). Por defecto: "es".</summary>
-        public string Lang { get; set; } = "es";
-
-        /// <summary>Altura mínima CSS del contenedor del editor. Por defecto: "520px".</summary>
-        public string EditorHeight { get; set; } = "520px";
-
-        /// <summary>URL completa al JS del API de OnlyOffice Document Server.</summary>
+        /// URL completa al JS del API de OnlyOffice Document Server.
         public string OnlyOfficeApiUrl { get; set; } = "https://192.168.10.14:4443/web-apps/apps/api/documents/api.js";
 
-        /// <summary>Secreto JWT compartido con Document Server.</summary>
+        /// Secreto JWT compartido con Document Server.
         public string JwtSecret { get; set; } = "secreto_personalizado";
 
-        /// <summary>URL base pública de esta aplicación (como la ve Document Server).</summary>
+        /// URL base pública de esta aplicación (para que document server devuelva el documento).
         public string PublicBaseUrl { get; set; } = "http://192.168.10.34:2355";
 
-        /// <summary>ID del usuario para la sesión del editor.</summary>
+        // ═══════════════════════════════
+        //  Propiedades de configuración
+        // ═══════════════════════════════
+
+        /// "edit" o "view". Por defecto: "edit".
+        public string Mode { get; set; } = "edit";
+
+        /// Código de idioma (ej. "es", "en"). Por defecto: "es".
+        public string Lang { get; set; } = "es";
+
+        /// Altura mínima CSS del contenedor del editor. Por defecto: "520px".
+        public string EditorHeight { get; set; } = "520px";
+
+
+        /// ID del usuario para la sesión del editor.
         public string UserId { get; set; } = "1";
 
-        /// <summary>Nombre del usuario para la sesión del editor.</summary>
+        /// Nombre del usuario para la sesión del editor.
         public string UserDisplayName { get; set; } = "Usuario";
 
         // ═══════════════════════════════════════════════════════════════
         //  Propiedades para enlazar botones externos (sin JS en la página)
         // ═══════════════════════════════════════════════════════════════
 
-        /// <summary>
         /// IDs de los controles (botón, LinkButton, etc.) que al hacer clic capturarán
         /// el documento editado, lo almacenarán en un HiddenField interno, y
         /// dispararán un postback. Tras el postback se pueden leer los bytes
         /// con <see cref="GetEditedDocumentBytes()"/>.
         /// Acepta un solo ID o varios separados por coma: "btn1,btn2,btn3".
         /// El control conecta automáticamente el JavaScript necesario.
-        /// </summary>
         public string CaptureTriggerId { get; set; }
 
         // ═══════════════════════════════════════════════════════════════
-        //  Evento de documento capturado
+        //  Propiedades computadas
         // ═══════════════════════════════════════════════════════════════
 
-
-
-        // ═══════════════════════════════════════════════════════════════
-        //  Propiedades computadas (solo lectura)
-        // ═══════════════════════════════════════════════════════════════
-
-        /// <summary>ID del DOM del contenedor del editor (único por instancia).</summary>
+        /// ID del DOM del contenedor del editor (único por instancia).
         public string EditorContainerId => ClientID + "_editor";
 
-        /// <summary>JSON de configuración de OnlyOffice (se renderiza en la página).</summary>
+        /// JSON de configuración de OnlyOffice (se renderiza en la página).
         public string ConfigJson { get; private set; } = "null";
 
-        /// <summary>Indica si el control tiene un documento válido para mostrar.</summary>
+        /// Indica si el control tiene un documento válido para mostrar.
         public bool HasDocument =>
             !string.IsNullOrWhiteSpace(DocumentUrl)
             && !string.IsNullOrWhiteSpace(DocumentName)
             && !string.IsNullOrWhiteSpace(DocumentKey);
 
-        /// <summary>
         /// ID del HiddenField que almacena el documento editado en base64.
         /// Se usa desde JavaScript para inyectar el contenido antes del postback.
-        /// </summary>
         public string HiddenFieldClientId => hfEditedDocumentBase64.ClientID;
 
         // ═══════════════════════════════════════════════════════════════
         //  Acceso al documento editado desde code-behind
         // ═══════════════════════════════════════════════════════════════
 
-        /// <summary>
         /// Indica si el HiddenField contiene un documento editado (tras un postback
         /// disparado por <c>captureToHiddenField</c> en JavaScript).
-        /// </summary>
         public bool HasEditedDocument =>
             !string.IsNullOrWhiteSpace(hfEditedDocumentBase64.Value);
 
-        /// <summary>
         /// Obtiene los bytes del documento editado que fue capturado en el HiddenField
         /// por la función JS <c>OnlyOfficeEditorModule.captureToHiddenField()</c>.
         /// Retorna <c>null</c> si no hay documento capturado.
-        /// </summary>
         public byte[] GetEditedDocumentBytes()
         {
             var b64 = hfEditedDocumentBase64.Value;
@@ -170,25 +127,19 @@ namespace WebEditor.Controls
             catch { return null; }
         }
 
-        /// <summary>
         /// Limpia el contenido del HiddenField (para liberar memoria del ViewState
         /// después de haber consumido los bytes).
-        /// </summary>
         public void ClearEditedDocument()
         {
             hfEditedDocumentBase64.Value = string.Empty;
         }
 
         // ═══════════════════════════════════════════════════════════════
-        //  Métodos de conveniencia para cargar documentos
+        //  Métodos para cargar documentos
         // ═══════════════════════════════════════════════════════════════
 
-        /// <summary>
         /// Carga un documento desde bytes en memoria.
         /// Guarda el archivo en App_Data/uploads y configura todas las URLs automáticamente.
-        /// </summary>
-        /// <param name="data">Contenido binario del archivo.</param>
-        /// <param name="fileName">Nombre original del archivo (ej. "reporte.docx").</param>
         public void SetDocumentFromBytes(byte[] data, string fileName)
         {
             if (data == null || data.Length == 0 || string.IsNullOrWhiteSpace(fileName))
@@ -209,11 +160,8 @@ namespace WebEditor.Controls
                 "~/Handlers/OnlyOfficeHandler.ashx?action=callback&fileId=" + HttpUtility.UrlEncode(fileId));
         }
 
-        /// <summary>
         /// Carga un documento desde una ruta física en el servidor.
-        /// </summary>
-        /// <param name="serverFilePath">Ruta absoluta al archivo en el servidor.</param>
-        /// <param name="displayName">Nombre a mostrar (opcional; si es null usa el nombre del archivo).</param>
+        /// "serverFilePath" => Ruta absoluta al archivo en el servidor.
         public void SetDocumentFromFile(string serverFilePath, string displayName = null)
         {
             if (!File.Exists(serverFilePath)) return;
@@ -222,12 +170,9 @@ namespace WebEditor.Controls
                 displayName ?? Path.GetFileName(serverFilePath));
         }
 
-        /// <summary>
         /// Configura el editor para un archivo que ya existe en App_Data/uploads
         /// (por ejemplo, uno subido previamente con su fileId conocido).
-        /// </summary>
-        /// <param name="fileId">Identificador del archivo almacenado (sin extensión).</param>
-        /// <param name="originalName">Nombre original del archivo.</param>
+        /// "fileId" => Identificador del archivo almacenado (sin extensión).
         public void SetDocumentFromUpload(string fileId, string originalName)
         {
             if (string.IsNullOrWhiteSpace(fileId)) return;
@@ -326,10 +271,8 @@ namespace WebEditor.Controls
             }
         }
 
-        /// <summary>
         /// Registra automáticamente los scripts de arranque del editor y
         /// los handlers de clic para DownloadTriggerId / CaptureTriggerId.
-        /// </summary>
         private void RegisterTriggerScripts()
         {
             if (!HasDocument) return;
@@ -393,7 +336,7 @@ namespace WebEditor.Controls
             }
         }
 
-        /// <summary>Busca un control por ID recursión arriba y abajo en el árbol.</summary>
+        /// Busca un control por ID recursión arriba y abajo en el árbol.
         private static Control FindControlRecursive(Control root, string id)
         {
             if (root == null || string.IsNullOrWhiteSpace(id)) return null;
